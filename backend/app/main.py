@@ -1,16 +1,29 @@
+import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
 import app.models  # Asegurar registro de todos los modelos SQLAlchemy
 
-# Crear tablas automáticamente al inicio si no existen
-Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Crear tablas en base de datos al inicio con reintentos para soportar PostgreSQL en la nube
+    for attempt in range(6):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print("Tablas de base de datos listas y sincronizadas.")
+            break
+        except Exception as e:
+            print(f"Esperando conexión con base de datos (intento {attempt + 1}/6): {e}")
+            time.sleep(3)
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Backend API de NEXUS: Personal Life Agent con persistencia en PostgreSQL / SQLite, IA y PWA."
+    description="Backend API de NEXUS: Personal Life Agent con persistencia en PostgreSQL / SQLite, IA y PWA.",
+    lifespan=lifespan
 )
 
 # Configuración CORS

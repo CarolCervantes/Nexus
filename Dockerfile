@@ -16,6 +16,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/backend \
     PORT=8000
 
 # Dependencias para PostgreSQL y compilación

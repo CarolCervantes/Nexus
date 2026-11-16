@@ -66,7 +66,14 @@ class AIService:
             except Exception:
                 return AIService._call_heuristic_engine(db, user_id, user_message, context)
 
-        # 2. Si hay clave de Gemini y proveedor configurado, intentar llamada a Gemini API
+        # 2. Si el proveedor configurado es Groq (Llama 3 en la nube gratuito):
+        if settings.GROQ_API_KEY and settings.AI_PROVIDER == "groq":
+            try:
+                return await AIService._call_groq_api(db, user_id, user_message, context, conversation_history)
+            except Exception:
+                return AIService._call_heuristic_engine(db, user_id, user_message, context)
+
+        # 3. Si hay clave de Gemini y proveedor configurado, intentar llamada a Gemini API
         if settings.GEMINI_API_KEY and settings.AI_PROVIDER == "gemini":
             try:
                 return await AIService._call_gemini_api(db, user_id, user_message, context, conversation_history)
@@ -206,6 +213,47 @@ class AIService:
                 return {"content": text, "tool_calls": None, "tool_results": None}
             else:
                 # Fallback al motor heurístico
+                return AIService._call_heuristic_engine(db, user_id, user_message, context)
+
+    @staticmethod
+    async def _call_groq_api(
+        db: Session,
+        user_id: int,
+        user_message: str,
+        context: str,
+        conversation_history: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Llamada a la API de Groq Cloud (Llama 3 en la nube gratuito)."""
+        heur = AIService._call_heuristic_engine(db, user_id, user_message, context)
+        if heur.get("tool_calls"):
+            return heur
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        messages = [
+            {"role": "system", "content": f"{SYSTEM_INSTRUCTIONS}\n\nCONTEXTO PERSISTENTE DEL USUARIO:\n{context}"}
+        ]
+        for msg in conversation_history[-6:]:
+            role = "user" if msg["sender"] == "user" else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        payload = {
+            "model": settings.GROQ_MODEL,
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 1024
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data["choices"][0]["message"]["content"]
+                return {"content": text, "tool_calls": None, "tool_results": None}
+            else:
                 return AIService._call_heuristic_engine(db, user_id, user_message, context)
 
     @staticmethod

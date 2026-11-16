@@ -59,15 +59,21 @@ class AIService:
         """Procesa el mensaje del usuario, evalúa herramientas y devuelve la respuesta del asistente."""
         context = build_context_prompt(db, user_id)
         
-        # 1. Si hay clave de Gemini y proveedor configurado, intentar llamada a Gemini API
+        # 1. Si el proveedor configurado es Ollama:
+        if settings.AI_PROVIDER == "ollama":
+            try:
+                return await AIService._call_ollama_api(db, user_id, user_message, context, conversation_history)
+            except Exception:
+                return AIService._call_heuristic_engine(db, user_id, user_message, context)
+
+        # 2. Si hay clave de Gemini y proveedor configurado, intentar llamada a Gemini API
         if settings.GEMINI_API_KEY and settings.AI_PROVIDER == "gemini":
             try:
                 return await AIService._call_gemini_api(db, user_id, user_message, context, conversation_history)
-            except Exception as e:
-                # Fallback al motor heurístico interno
+            except Exception:
                 return AIService._call_heuristic_engine(db, user_id, user_message, context)
                 
-        # 2. Si no hay API key o está en modo desarrollo, usar el motor heurístico interno inteligente
+        # 3. Motor heurístico de herramientas para respuesta inmediata y confiable
         return AIService._call_heuristic_engine(db, user_id, user_message, context)
 
     @staticmethod
@@ -199,4 +205,43 @@ class AIService:
                 return {"content": text, "tool_calls": None, "tool_results": None}
             else:
                 # Fallback al motor heurístico
+                return AIService._call_heuristic_engine(db, user_id, user_message, context)
+
+    @staticmethod
+    async def _call_ollama_api(
+        db: Session,
+        user_id: int,
+        user_message: str,
+        context: str,
+        conversation_history: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Llamada a Ollama local (ej. http://localhost:11434)."""
+        messages = [
+            {"role": "system", "content": f"{SYSTEM_INSTRUCTIONS}\n\nCONTEXTO PERSISTENTE DEL USUARIO:\n{context}"}
+        ]
+        for msg in conversation_history[-6:]:
+            role = "user" if msg["sender"] == "user" else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        # Primero evaluar si hay una acción/herramienta explícita para persistir en BD
+        heur = AIService._call_heuristic_engine(db, user_id, user_message, context)
+        if heur.get("tool_calls"):
+            return heur
+
+        url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                url,
+                json={
+                    "model": settings.OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": False
+                }
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("message", {}).get("content", "")
+                return {"content": text, "tool_calls": None, "tool_results": None}
+            else:
                 return AIService._call_heuristic_engine(db, user_id, user_message, context)

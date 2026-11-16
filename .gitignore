@@ -1,0 +1,27 @@
+# Environments
+backend/venv/
+venv/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.db
+backend/nexus_app.db
+backend/test_nexus.db
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

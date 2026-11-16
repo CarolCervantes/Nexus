@@ -51,3 +51,44 @@ def health_check():
         "version": settings.VERSION,
         "ai_provider": settings.AI_PROVIDER
     }
+
+# Soporte unificado de Frontend PWA (Single-Port Desktop & Cloud)
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+
+frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+if os.path.exists(frontend_dist):
+    assets_dir = os.path.join(frontend_dist, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    icons_dir = os.path.join(frontend_dist, "icons")
+    if os.path.exists(icons_dir):
+        app.mount("/icons", StaticFiles(directory=icons_dir), name="icons")
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def serve_manifest():
+        return FileResponse(os.path.join(frontend_dist, "manifest.webmanifest"), media_type="application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def serve_sw():
+        return FileResponse(os.path.join(frontend_dist, "sw.js"), media_type="application/javascript")
+
+    @app.get("/registerSW.js", include_in_schema=False)
+    async def serve_register_sw():
+        return FileResponse(os.path.join(frontend_dist, "registerSW.js"), media_type="application/javascript")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def serve_favicon():
+        return FileResponse(os.path.join(frontend_dist, "favicon.svg"), media_type="image/svg+xml")
+
+    # SPA Fallback para cualquier ruta de la aplicación
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "API endpoint no encontrado"})
+        target_file = os.path.join(frontend_dist, full_path)
+        if full_path and os.path.isfile(target_file):
+            return FileResponse(target_file)
+        return FileResponse(os.path.join(frontend_dist, "index.html"))

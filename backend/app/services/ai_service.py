@@ -84,11 +84,12 @@ class AIService:
         response_text = ""
         
         # A. Detección de creación de tareas
-        task_match = re.search(r"(?:añade|agrega|crea|recuérdame|anota)(?: una)? tarea[:\s]*(.+)", message, re.IGNORECASE)
+        task_match = re.search(r"(?:añade|agrega|crea|recuérdame|anota)(?: una)? tarea(?:\s+(?:urgente|importante))?(?:\s+(?:llamada|que se llame|de|para))?[:\s]*(.+)", message, re.IGNORECASE)
         if task_match or "recuérdame " in msg_lower or "tarea " in msg_lower:
             title = task_match.group(1).strip() if task_match else message
-            # Limpiar prefijos
-            title = re.sub(r"^(que debo|hacer|de|para|que)\s+", "", title, flags=re.IGNORECASE)
+            # Limpiar prefijos residuales
+            title = re.sub(r"^(?:que debo|hacer|de|para|que|llamada|que se llame)\s+", "", title, flags=re.IGNORECASE).strip()
+            title = re.sub(r"^(?:urgente\s+|importante\s+)", "", title, flags=re.IGNORECASE).strip()
             
             prio = "P2" if any(w in msg_lower for w in ["urgente", "importante", "hoy", "ya"]) else "P3"
             t_res = execute_tool(db, user_id, "create_task", {
